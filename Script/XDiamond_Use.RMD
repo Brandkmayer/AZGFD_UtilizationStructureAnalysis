@@ -1,0 +1,79 @@
+---
+title: "XDiamond_DumpPastures"
+author: "Brandon Mayer"
+date: '2022-04-25'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE) 
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(data.table)
+library(fs)
+library(readxl)
+library(openxlsx)
+
+```
+
+# Assign thew year of interest
+```{r cars}
+year <- as.character("2024") 
+```
+
+# Conver excel into 
+
+```{r pressure, echo=FALSE}
+home<- as.character(path_home())
+# Store data in the correct 
+path <- paste0(home,"/Box/1.Ruyle_lab/1.Project_Data/XDiamond/AZGFD_LandSwap/Data/Utilization/", year)
+path2 <- paste0(home,"/Box/1.Ruyle_lab/1.Project_Data/XDiamond/AZGFD_LandSwap/Results/Utilization/")
+files <- list.files(path = path, pattern = ".csv", full.names = T, all.files = TRUE, recursive = TRUE)
+# tbl <- sapply(files, read_csv, simplify=FALSE)
+```
+# Data merging and updating with metadata
+```{r}
+Listed_data <- list()
+for (i in 1:length(files)) {
+  path <- files[i]
+  data <- readr::read_csv(path)
+  Pasture <- sub('_.*', '\\1', na.omit(unique(data$SiteID)))
+  Transect <- sub('.*_', '\\1',na.omit(unique(data$SiteID)))
+  data$Pasture <- Pasture;data$Transect <- Transect;data$Date <- na.omit(lubridate::mdy(unique(data$Date)))
+  Listed_data[[i]]<- data
+}
+
+all_data <-rbindlist(Listed_data)
+```
+
+# Analysis
+```{r}
+Transect_results <- all_data %>% group_by(Date,Pasture, Transect) %>% dplyr::summarise(Average = round(mean(nValue,na.rm = T),digits = 1), SD = round(sd(nValue,na.rm =T),digits = 1), N = n()) %>% mutate(CI = paste(round(Average -qt(p=0.05/2, df=N-1,lower.tail=F)*(SD/sqrt(N)),digits = 1),"-",round(Average +qt(p=0.05/2, df=N-1,lower.tail=F)*(SD/sqrt(N)),digits = 1))) %>% select(-N)
+```
+
+
+```{r}
+wb <- createWorkbook()
+addWorksheet(wb, paste0(year))
+hs1 <- createStyle(fgFill = "#4F81BD", halign = "CENTER", textDecoration = "Bold",
+    border = "Bottom", fontColour = "white")
+writeDataTable(wb, sheet = paste0(year),headerStyle = hs1, Transect_results, startRow = 1, startCol = 1)
+setColWidths(wb, sheet = paste0(year), cols = 2:7, widths = "auto")
+saveWorkbook(wb, file = paste0(path2,"Utilization",year,".xlsx"), overwrite = TRUE)
+
+```
+
+# Add new Use to Yearly Use 
+```{r}
+# Roll_new <- Results %>% select(Pasture,Transect,date,Average)
+# Roll_new$Transect <- as.integer(Roll_new$Transect);colnames(Roll_new)[4] <- paste0(year," Use");colnames(Roll_new)[3] <- paste0(year," Sampling")
+# 
+# RollPath <- gsub(paste0("Processed_data/"),"",path2)
+# Roll_updated <- readxl::read_excel(paste0(RollPath,"Yearly_Monitoring.xlsx"), sheet = "Yearly_Use")%>% left_join(Roll_new, by = c("Pasture","Transect"))
+# write.xlsx(Roll_updated, file=paste0(RollPath,"Yearly_Monitoring.xlsx"), sheet = "Yearly_Use")
+# wb <- loadWorkbook(paste0(RollPath,"Yearly_Monitoring.xlsx"))
+# writeData(wb, sheet = "Yearly_Use", Roll_updated, colNames = T)
+# saveWorkbook(wb,paste0(RollPath,"Yearly_Monitoring.xlsx"),overwrite = T)
+```
+

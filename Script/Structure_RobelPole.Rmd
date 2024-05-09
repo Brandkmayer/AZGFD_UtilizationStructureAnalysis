@@ -1,0 +1,87 @@
+---
+title: "Robel Pole Average"
+author: "Brandon Mayer"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+year <-readline() 
+path <- paste(dirname(path.expand('~')),"/Box/1.Ruyle_lab/1.Project_Data/XDiamond/AZGFD_LandSwap/Data/Structure/",as.character(year), sep="")
+```
+
+```{r,echo=FALSE,warning=FALSE}
+files <- cbind(as.data.frame(list.files(path,recursive = F, include.dirs = F, pattern = ".csv",full.names = T)), lubridate::ymd(sub("_.*", "",list.files(path,recursive = F, include.dirs = F, pattern = ".csv"))));names(files) <- c("Files", "Dates")
+MFiles <- split(files,files$Dates)
+all_data_listed <- list()
+for (Visit in 1:length(MFiles)) {
+  files <- MFiles[[Visit]]$Files
+  Listed_data <- list()
+  for (i in 1:length(files)) {
+    pathtemp <- files[i]
+    data <- readr::read_csv(pathtemp)
+    Pasture <- sub('_.*', '\\1', na.omit(unique(data$SiteID)))
+    Transect <- sub('.*_', '\\1',na.omit(unique(data$SiteID)))
+    data$Pasture <- Pasture;data$Transect <- Transect;data$Date <- na.omit(lubridate::mdy(unique(data$Date)))
+    data$Year <- lubridate::year(unique(data$Date))
+    Listed_data[[i]]<- data
+    }
+  all_data_listed[[Visit]] <-data.table::rbindlist(Listed_data)
+}
+```
+
+```{r, echo=FALSE}
+
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE) {
+    library(plyr)
+
+    # New version of length which can handle NA's: if na.rm==T, don't count them
+    length2 <- function (x, na.rm=FALSE) {
+        if (na.rm) sum(!is.na(x))
+        else       length(x)
+    }
+
+    # This does the summary. For each group's data frame, return a vector with
+    # N, mean, and sd
+    datac <- ddply(data, groupvars, .drop=.drop,
+      .fun = function(xx, col) {
+        c(N    = length2(xx[[col]], na.rm=na.rm),
+          mean = mean   (xx[[col]], na.rm=na.rm),
+          sd   = sd     (xx[[col]], na.rm=na.rm)
+        )
+      },
+      measurevar
+    )
+
+    # Rename the "mean" column    
+    datac <- rename(datac, c("mean" = measurevar))
+
+    datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+
+    # Confidence interval multiplier for standard error
+    # Calculate t-statistic for confidence interval: 
+    # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+    ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+    datac$ci <- datac$se * ciMult
+    datac <- datac %>% mutate_at(vars(names(datac)[-(1:4)]), ~ round(., digits = 1))
+    return(datac)
+}
+for (j in 1:length(all_data_listed)) {
+  results <- summarySE(all_data_listed[[j]], measurevar="nValue", groupvars=c("Date","Pasture","SiteID")) %>%
+  select(Date, Pasture, Site = SiteID, Measurements = nValue, SD = sd, se, CI=ci)
+write.csv(results,paste(dirname(path.expand('~')),"/Box/1.Ruyle_lab/1.Project_Data/XDiamond/AZGFD_LandSwap/Results/Structure/",paste0("RP_",as.character(unique(results$Date)),".csv"), sep=""))
+}
+# if (length(all_data_listed) >1 ) {
+#       WITHinYEAR <- rbind(summarySE(all_data_listed[[1]], measurevar="nValue", groupvars=c("Date","Pasture","SiteID")) %>%select(Date, Pasture, Site = SiteID, Measurements = nValue),summarySE(all_data_listed[[2]], measurevar="nValue", groupvars=c("Date","Pasture","SiteID")) %>%
+#       select(Date, Pasture, Site = SiteID, Measurements = nValue))  %>% tidyr::pivot_wider(names_from = Date,values_from = Measurements)
+#   WITHinYEAR$Diff <- c(as.data.frame(WITHinYEAR[,4])-as.data.frame(WITHinYEAR[,3]))[[1]]
+#      write.csv(WITHinYEAR ,paste(dirname(path.expand('~')),"/Box/1.Ruyle_lab/1.Project_Data/XDiamond/AZGFD_LandSwap/Results/Structure/",paste0("RPWithinYears_",colnames(WITHinYEAR[, 4]),"_",colnames(WITHinYEAR[,3]),".csv"), sep=""))
+# }
+
+```
+
